@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garden Match Memory Game</title>
+    <style>
+        /* --- CSS STYLES --- */
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #F8F4E3; /* Soft cream background */
+            color: #3C2F2F; /* Dark brown text */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #5D806D; /* Deep sage green */
+            font-size: 3em; /* Very large title */
+            margin-bottom: 0.5em;
+        }
+
+        #game-info {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            font-weight: bold;
+            color: #C06C84; /* Dusty rose for info */
+        }
+
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr); /* 4x4 grid */
+            gap: 15px; /* Space between cards */
+            padding: 10px;
+            border-radius: 15px;
+            background-color: #EAE0D5; /* Lighter cream for board background */
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .card {
+            width: 150px; /* Large card size */
+            height: 150px;
+            perspective: 1000px;
+            cursor: pointer;
+            border-radius: 10px;
+            user-select: none;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.6s;
+        }
+
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+            border-radius: 10px;
+        }
+
+        .card.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 5em; /* Large icon size */
+            border-radius: 10px;
+            border: 3px solid #5D806D;
+        }
+
+        /* CARD BACK (initial state) */
+        .card-back {
+            background-color: #A9BCA3; /* Soft green for the back */
+            color: #3C2F2F;
+            transform: rotateY(0deg);
+            font-size: 2em;
+            font-weight: bold;
+            line-height: 1.2;
+            padding: 10px;
+        }
+
+        /* CARD FRONT (matched state/revealed) */
+        .card-front {
+            background-color: #FFF; /* White/Light background for content */
+            color: #C06C84; /* Dusty rose icon color */
+            transform: rotateY(180deg);
+        }
+
+        /* MATCHED CARDS STYLE */
+        .card.matched {
+            pointer-events: none; /* Can't click matched cards */
+            opacity: 0.7; /* Slight fade for visual cue */
+            box-shadow: 0 0 15px #C06C84; /* Highlight successful matches */
+            border: 5px solid #C06C84;
+        }
+        
+        /* END GAME MODAL */
+        #modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+
+        .modal-content {
+            background-color: #F8F4E3;
+            margin: 15% auto;
+            padding: 30px;
+            border: 10px solid #5D806D;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-content h2 {
+            font-size: 3em;
+            color: #C06C84;
+        }
+
+        .modal-content p {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+        }
+        
+        #restart-button {
+            padding: 15px 30px;
+            font-size: 1.5em;
+            background-color: #5D806D;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #restart-button:hover {
+            background-color: #4A6956;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🌿 Garden Match</h1>
+    <div id="game-info">
+        Moves: <span id="moves">0</span>
+    </div>
+
+    <div id="game-board">
+        </div>
+
+    <div id="modal">
+        <div class="modal-content">
+            <h2>🥳 Wonderful Job!</h2>
+            <p>You completed the game in <span id="final-moves">0</span> moves.</p>
+            <button id="restart-button">Play Again?</button>
+        </div>
+    </div>
+
+    <script>
+        // --- JAVASCRIPT LOGIC ---
+
+        const board = document.getElementById('game-board');
+        const movesDisplay = document.getElementById('moves');
+        const modal = document.getElementById('modal');
+        const finalMovesDisplay = document.getElementById('final-moves');
+        const restartButton = document.getElementById('restart-button');
+
+        // Simple, recognizable emojis for the cards (use them for their clarity!)
+        const cardIcons = ['🌸', '☀️', '💧', '🐝', '🐞', '🌳', '🍄', '🌷'];
+        
+        let cards = [];
+        let hasFlippedCard = false;
+        let lockBoard = false;
+        let firstCard, secondCard;
+        let moves = 0;
+        let matchesFound = 0;
+        const totalMatches = cardIcons.length; // 8 matches for a 4x4 board
+
+        // --- GAME INITIALIZATION ---
+
+        function setupGame() {
+            // 1. Double the icons for matching pairs
+            cards = [...cardIcons, ...cardIcons];
+            
+            // 2. Shuffle the cards using Fisher-Yates (efficient and random)
+            for (let i = cards.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [cards[i], cards[j]] = [cards[j], cards[i]];
+            }
+
+            // 3. Reset state
+            moves = 0;
+            matchesFound = 0;
+            movesDisplay.textContent = moves;
+            board.innerHTML = '';
+            modal.style.display = 'none';
+            lockBoard = false;
+            hasFlippedCard = false;
+            firstCard = secondCard = null;
+
+            // 4. Create card DOM elements
+            cards.forEach((icon, index) => {
+                const card = document.createElement('div');
+                card.classList.add('card');
+                card.dataset.icon = icon;
+                card.dataset.index = index;
+
+                card.innerHTML = `
+                    <div class="card-inner">
+                        <div class="card-back">Match!</div>
+                        <div class="card-front">${icon}</div>
+                    </div>
+                `;
+
+                card.addEventListener('click', flipCard);
+                board.appendChild(card);
+            });
+        }
+
+        // --- GAMEPLAY LOGIC ---
+
+        function flipCard() {
+            if (lockBoard) return;
+            if (this === firstCard) return; // Prevent double-clicking the same card
+
+            this.classList.add('flipped');
+
+            if (!hasFlippedCard) {
+                // First card flipped
+                hasFlippedCard = true;
+                firstCard = this;
+                return;
+            }
+
+            // Second card flipped
+            secondCard = this;
+            moves++;
+            movesDisplay.textContent = moves;
+            lockBoard = true; // Lock board while checking
+
+            checkForMatch();
+        }
+
+        function checkForMatch() {
+            const isMatch = firstCard.dataset.icon === secondCard.dataset.icon;
+
+            isMatch ? disableCards() : unflipCards();
+        }
+
+        function disableCards() {
+            // Cards match!
+            firstCard.removeEventListener('click', flipCard);
+            secondCard.removeEventListener('click', flipCard);
+            
+            // Add 'matched' class for visual cue
+            setTimeout(() => {
+                firstCard.classList.add('matched');
+                secondCard.classList.add('matched');
+                resetBoard();
+                
+                matchesFound++;
+                if (matchesFound === totalMatches) {
+                    endGame();
+                }
+            }, 600); // Wait for flip animation
+        }
+
+        function unflipCards() {
+            // Cards DO NOT match. Flip them back.
+            setTimeout(() => {
+                firstCard.classList.remove('flipped');
+                secondCard.classList.remove('flipped');
+                resetBoard();
+            }, 1000); // Keep them open for 1 second before flipping back
+        }
+
+        function resetBoard() {
+            [hasFlippedCard, lockBoard] = [false, false];
+            [firstCard, secondCard] = [null, null];
+        }
+
+        function endGame() {
+            finalMovesDisplay.textContent = moves;
+            setTimeout(() => {
+                modal.style.display = 'block';
+            }, 500);
+        }
+
+        restartButton.addEventListener('click', setupGame);
+
+        // Start the game when the page loads
+        setupGame();
+    </script>
+</body>
+</html>
